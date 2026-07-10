@@ -120,7 +120,7 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
   late String _icon;
   late int _color;
   late List<ActivityAttributeMapping> _mappings;
-  late List<CharacterAttribute> _allAttributes; // ← Added
+  late List<CharacterAttribute> _allAttributes;
 
   static const _palette = [
     0xFF3F51B5, 0xFF00897B, 0xFFE53935, 0xFF43A047, 0xFF6D4C41,
@@ -133,7 +133,7 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
     final e = widget.existing;
     _nameController = TextEditingController(text: e?.name ?? '');
     _categoryController = TextEditingController(text: e?.category ?? 'General');
-    _scoreController = TextEditingController(text: '${e?.score ?? 3}');
+    _scoreController = TextEditingController(text: '${e?.score ?? 50}');
     _type = e?.type ?? ActivityType.good;
     _icon = e?.icon ?? 'school';
     _color = e?.color ?? _palette.first;
@@ -147,8 +147,9 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
     _allAttributes = attrs;
 
     if (widget.existing == null) {
+      // Default zero contribution for new activities
       _mappings = attrs.map((attr) => ActivityAttributeMapping(
-        activityId: '',
+        activityId: '', 
         attributeId: attr.id,
         points: 0,
       )).toList();
@@ -170,9 +171,7 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
+        left: 20, right: 20, top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
       child: SingleChildScrollView(
@@ -180,7 +179,7 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(widget.existing == null ? 'New activity' : 'Edit activity',
+            Text(widget.existing == null ? 'New Activity' : 'Edit Activity',
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 16),
 
@@ -199,13 +198,12 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
             const SizedBox(height: 8),
 
             if (_allAttributes.isEmpty)
-              const Text('Loading attributes...')
+              const Center(child: CircularProgressIndicator())
             else
               ..._mappings.map((mapping) {
-                // Find the attribute name by ID
                 final attr = _allAttributes.firstWhere(
                   (a) => a.id == mapping.attributeId,
-                  orElse: () => CharacterAttribute(id: mapping.attributeId, name: 'Unknown'),
+                  orElse: () => CharacterAttribute(id: '', name: 'Unknown'),
                 );
 
                 return ListTile(
@@ -219,13 +217,9 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
                       controller: TextEditingController(text: mapping.points.toString()),
                       onChanged: (val) {
                         final points = int.tryParse(val) ?? 0;
-                        final index = _mappings.indexOf(mapping);
+                        final index = _mappings.indexWhere((m) => m.attributeId == mapping.attributeId);
                         if (index != -1) {
-                          _mappings[index] = ActivityAttributeMapping(
-                            activityId: mapping.activityId,
-                            attributeId: mapping.attributeId,
-                            points: points,
-                          );
+                          _mappings[index] = _mappings[index].copyWith(points: points); // Better if you add copyWith
                         }
                       },
                     ),
@@ -233,10 +227,10 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
                 );
               }).toList(),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             FilledButton(
               onPressed: _save,
-              child: Text(widget.existing == null ? 'Add activity' : 'Save changes'),
+              child: Text(widget.existing == null ? 'Create Activity' : 'Save Changes'),
             ),
           ],
         ),
@@ -250,34 +244,43 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
 
     final score = int.tryParse(_scoreController.text.trim()) ?? 0;
     final notifier = ref.read(activitiesProvider.notifier);
+    final repo = ref.read(activityRepositoryProvider);
 
-    final activity = widget.existing?.copyWith(
-          name: name,
-          score: score,
-          category: _categoryController.text.trim(),
-          type: _type,
-          color: _color,
-          icon: _icon,
-        ) ??
-        Activity(
-          id: const Uuid().v4(),
-          name: name,
-          score: score,
-          category: _categoryController.text.trim(),
-          type: _type,
-          color: _color,
-          icon: _icon,
-          sortOrder: 0,
-        );
+    String activityId;
+
+    final newActivity = widget.existing?.copyWith(
+      name: name,
+      score: score,
+      category: _categoryController.text.trim(),
+      type: _type,
+      color: _color,
+      icon: _icon,
+    ) ?? Activity(
+      id: const Uuid().v4(),
+      name: name,
+      score: score,
+      category: _categoryController.text.trim(),
+      type: _type,
+      color: _color,
+      icon: _icon,
+    );
+
+    activityId = newActivity.id;
 
     if (widget.existing == null) {
-      await notifier.addActivity(activity);
+      await notifier.addActivity(newActivity);
     } else {
-      await notifier.updateActivity(activity);
+      await notifier.updateActivity(newActivity);
     }
 
-    final repo = ref.read(activityRepositoryProvider);
-    await repo.setMappingsForActivity(activity.id, _mappings);
+    // Update mappings with correct activityId
+    final updatedMappings = _mappings.map((m) => ActivityAttributeMapping(
+      activityId: activityId,
+      attributeId: m.attributeId,
+      points: m.points,
+    )).toList();
+
+    await repo.setMappingsForActivity(activityId, updatedMappings);
 
     if (mounted) Navigator.of(context).pop();
   }
