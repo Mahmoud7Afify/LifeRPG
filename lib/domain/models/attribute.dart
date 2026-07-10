@@ -51,6 +51,18 @@ class ActivityAttributeMapping {
     required this.points,
   });
 
+  ActivityAttributeMapping copyWith({
+    String? activityId,
+    String? attributeId,
+    int? points,
+  }) {
+    return ActivityAttributeMapping(
+      activityId: activityId ?? this.activityId,
+      attributeId: attributeId ?? this.attributeId,
+      points: points ?? this.points,
+    );
+  }
+
   Map<String, Object?> toMap() => {
         'activity_id': activityId,
         'attribute_id': attributeId,
