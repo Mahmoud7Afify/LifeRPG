@@ -119,7 +119,8 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
   late ActivityType _type;
   late String _icon;
   late int _color;
-  late List<ActivityAttributeMapping> _mappings; // ← New
+  late List<ActivityAttributeMapping> _mappings;
+  late List<CharacterAttribute> _allAttributes; // ← Added
 
   static const _palette = [
     0xFF3F51B5, 0xFF00897B, 0xFFE53935, 0xFF43A047, 0xFF6D4C41,
@@ -136,16 +137,18 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
     _type = e?.type ?? ActivityType.good;
     _icon = e?.icon ?? 'school';
     _color = e?.color ?? _palette.first;
-    _mappings = []; // Will be loaded async
-    _loadMappings();
+    _mappings = [];
+    _allAttributes = [];
+    _loadData();
   }
 
-  Future<void> _loadMappings() async {
+  Future<void> _loadData() async {
+    final attrs = await ref.read(attributesProvider.future);
+    _allAttributes = attrs;
+
     if (widget.existing == null) {
-      // Default mappings for new activities
-      final attrs = await ref.read(attributesProvider.future);
       _mappings = attrs.map((attr) => ActivityAttributeMapping(
-        activityId: '', // temporary
+        activityId: '',
         attributeId: attr.id,
         points: 0,
       )).toList();
@@ -181,7 +184,6 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
                 style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 16),
 
-            // Basic fields (unchanged)
             TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'Name')),
             const SizedBox(height: 12),
             TextField(controller: _categoryController, decoration: const InputDecoration(labelText: 'Category')),
@@ -191,39 +193,45 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
               keyboardType: const TextInputType.numberWithOptions(signed: true),
               decoration: const InputDecoration(labelText: 'Base Score'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
 
-            // Attribute Mappings Section - NEW
             Text('Attribute Contributions', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            ..._mappings.map((mapping) {
-              final attrName = mapping.attributeId; // In real app you'd map ID to name better
-              return ListTile(
-                title: Text(attrName),
-                subtitle: const Text('Points contributed'),
-                trailing: SizedBox(
-                  width: 80,
-                  child: TextField(
-                    keyboardType: TextInputType.numberWithOptions(signed: true),
-                    decoration: const InputDecoration(suffixText: 'pts'),
-                    controller: TextEditingController(text: mapping.points.toString()),
-                    onChanged: (val) {
-                      final points = int.tryParse(val) ?? 0;
-                      final index = _mappings.indexOf(mapping);
-                      _mappings[index] = ActivityAttributeMapping(
-                        activityId: mapping.activityId,
-                        attributeId: mapping.attributeId,
-                        points: points,
-                      );
-                    },
-                  ),
-                ),
-              );
-            }).toList(),
 
-            const SizedBox(height: 12),
-            // Icon & Color pickers (kept from before)
-            // ... (I'll keep them short for brevity - copy from your original if needed)
+            if (_allAttributes.isEmpty)
+              const Text('Loading attributes...')
+            else
+              ..._mappings.map((mapping) {
+                // Find the attribute name by ID
+                final attr = _allAttributes.firstWhere(
+                  (a) => a.id == mapping.attributeId,
+                  orElse: () => CharacterAttribute(id: mapping.attributeId, name: 'Unknown'),
+                );
+
+                return ListTile(
+                  title: Text(attr.name),
+                  subtitle: const Text('Points contributed'),
+                  trailing: SizedBox(
+                    width: 90,
+                    child: TextField(
+                      keyboardType: const TextInputType.numberWithOptions(signed: true),
+                      decoration: const InputDecoration(suffixText: 'pts'),
+                      controller: TextEditingController(text: mapping.points.toString()),
+                      onChanged: (val) {
+                        final points = int.tryParse(val) ?? 0;
+                        final index = _mappings.indexOf(mapping);
+                        if (index != -1) {
+                          _mappings[index] = ActivityAttributeMapping(
+                            activityId: mapping.activityId,
+                            attributeId: mapping.attributeId,
+                            points: points,
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                );
+              }).toList(),
 
             const SizedBox(height: 20),
             FilledButton(
@@ -239,6 +247,7 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
   Future<void> _save() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) return;
+
     final score = int.tryParse(_scoreController.text.trim()) ?? 0;
     final notifier = ref.read(activitiesProvider.notifier);
 
@@ -267,7 +276,6 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
       await notifier.updateActivity(activity);
     }
 
-    // Save attribute mappings
     final repo = ref.read(activityRepositoryProvider);
     await repo.setMappingsForActivity(activity.id, _mappings);
 
