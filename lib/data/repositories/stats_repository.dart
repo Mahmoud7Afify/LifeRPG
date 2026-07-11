@@ -42,6 +42,11 @@ class StatsRepository {
     );
   }
 
+  Future<void> deleteAchievement(String id) async {
+    final db = await _db;
+    await db.delete('achievements', where: 'id = ?', whereArgs: [id]);
+  }
+
   // --- Missions ---
 
   Future<List<Mission>> getMissionsForPeriod(

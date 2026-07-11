@@ -8,8 +8,9 @@ import '../domain/models/user_stats.dart';
 import 'xp_service.dart';
 
 /// Orchestrates everything that must happen when the user completes a
-/// check-in: writing the log, updating aggregate stats, awarding XP/levels,
-/// bumping attribute points, and rolling the daily streak forward.
+/// check-in: writing the log, updating aggregate stats, awarding XP/levels
+/// (both lifetime and "today"), bumping attribute points, rolling the daily
+/// streak forward, and updating best-day records when a day rolls over.
 class ScoringService {
   ScoringService({
     ActivityRepository? activityRepo,
@@ -80,19 +81,36 @@ class ScoringService {
     var stats = await _statsRepo.getStats();
     final now = log.timestamp;
 
-    // Roll "today" counters if the day has changed since last reset.
+    // Roll "today" counters if the day has changed since last reset,
+    // recording best-day XP/level/points before wiping them.
     if (!_isSameDay(stats.lastResetDate, now)) {
       final wasYesterday = _isSameDay(
         stats.lastResetDate,
         now.subtract(const Duration(days: 1)),
       );
+
+      final newBestXp = stats.todayXp > stats.bestDayXp ? stats.todayXp : stats.bestDayXp;
+      final newBestLevel =
+          stats.todayLevel > stats.bestDayLevel ? stats.todayLevel : stats.bestDayLevel;
+      final newBestPoints =
+          stats.todayPoints > stats.bestDayPoints ? stats.todayPoints : stats.bestDayPoints;
+      final improvedBestDay = newBestXp > stats.bestDayXp ||
+          newBestLevel > stats.bestDayLevel ||
+          newBestPoints > stats.bestDayPoints;
+
       stats = stats.copyWith(
         todayPoints: 0,
         todayGoodPoints: 0,
         todayBadPoints: 0,
+        todayXp: 0,
+        todayLevel: 1,
         lastResetDate: now,
         // Streak continues only if the previous "today" was literally yesterday.
         currentStreakDays: wasYesterday ? stats.currentStreakDays : 0,
+        bestDayXp: newBestXp,
+        bestDayLevel: newBestLevel,
+        bestDayPoints: newBestPoints,
+        bestDayDate: improvedBestDay ? stats.lastResetDate : stats.bestDayDate,
       );
       await _activityRepo.resetTodayAttributePoints();
     }
@@ -105,6 +123,7 @@ class ScoringService {
 
     final xpGain = _xpService.xpForCheckIn(score: log.score, type: log.type);
     final xpResult = _xpService.applyXpGain(stats.totalXp, xpGain);
+    final todayXpResult = _xpService.applyXpGain(stats.todayXp, xpGain);
 
     final updated = stats.copyWith(
       todayPoints: stats.todayPoints + log.score,
@@ -124,6 +143,8 @@ class ScoringService {
       totalCheckIns: stats.totalCheckIns + 1,
       totalXp: xpResult.totalXp,
       level: xpResult.level,
+      todayXp: todayXpResult.totalXp,
+      todayLevel: todayXpResult.level,
       currentStreakDays: newStreak,
       longestStreakDays:
           newStreak > stats.longestStreakDays ? newStreak : stats.longestStreakDays,
@@ -141,7 +162,7 @@ class ScoringService {
       }
     }
 
-    return xpResult;
+    return todayXpResult;
   }
 
   Future<UserStats> currentStats() => _statsRepo.getStats();

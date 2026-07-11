@@ -10,13 +10,15 @@ import 'package:sqflite/sqflite.dart';
 ///   attributes                  - character attributes (Knowledge, Health, ...)
 ///   activity_attribute_mappings - activity -> attribute point contributions
 ///   achievements                - achievement definitions + unlock state
-///   missions                    - daily/weekly mission instances
+///   goals                       - user-defined daily goals (progress computed live)
+///   missions                    - daily/weekly mission instances (legacy, unused by UI)
 ///   settings                    - key/value simple settings (backup of SharedPreferences)
 class DBHelper {
   DBHelper._internal();
   static final DBHelper instance = DBHelper._internal();
 
   static Database? _db;
+  static const int _schemaVersion = 2;
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -29,8 +31,9 @@ class DBHelper {
     final path = join(dbPath, 'life_rpg.db');
     return openDatabase(
       path,
-      version: 1,
+      version: _schemaVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -79,6 +82,12 @@ class DBHelper {
         total_check_ins INTEGER NOT NULL DEFAULT 0,
         total_xp INTEGER NOT NULL DEFAULT 0,
         level INTEGER NOT NULL DEFAULT 1,
+        today_xp INTEGER NOT NULL DEFAULT 0,
+        today_level INTEGER NOT NULL DEFAULT 1,
+        best_day_xp INTEGER NOT NULL DEFAULT 0,
+        best_day_level INTEGER NOT NULL DEFAULT 1,
+        best_day_points INTEGER NOT NULL DEFAULT 0,
+        best_day_date INTEGER,
         current_streak_days INTEGER NOT NULL DEFAULT 0,
         longest_streak_days INTEGER NOT NULL DEFAULT 0,
         last_check_in_at INTEGER,
@@ -91,7 +100,8 @@ class DBHelper {
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
         total_points INTEGER NOT NULL DEFAULT 0,
-        today_points INTEGER NOT NULL DEFAULT 0
+        today_points INTEGER NOT NULL DEFAULT 0,
+        max_value INTEGER NOT NULL DEFAULT 100
       )
     ''');
 
@@ -117,6 +127,18 @@ class DBHelper {
         target_activity_name TEXT,
         unlocked INTEGER NOT NULL DEFAULT 0,
         unlocked_at INTEGER
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE goals (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        type TEXT NOT NULL,
+        target_activity_id TEXT,
+        target_value INTEGER NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL
       )
     ''');
 
@@ -153,11 +175,46 @@ class DBHelper {
       'total_check_ins': 0,
       'total_xp': 0,
       'level': 1,
+      'today_xp': 0,
+      'today_level': 1,
+      'best_day_xp': 0,
+      'best_day_level': 1,
+      'best_day_points': 0,
+      'best_day_date': null,
       'current_streak_days': 0,
       'longest_streak_days': 0,
       'last_check_in_at': null,
       'last_reset_date': DateTime.now().millisecondsSinceEpoch,
     });
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute(
+          'ALTER TABLE attributes ADD COLUMN max_value INTEGER NOT NULL DEFAULT 100');
+      await db.execute(
+          'ALTER TABLE stats ADD COLUMN today_xp INTEGER NOT NULL DEFAULT 0');
+      await db.execute(
+          'ALTER TABLE stats ADD COLUMN today_level INTEGER NOT NULL DEFAULT 1');
+      await db.execute(
+          'ALTER TABLE stats ADD COLUMN best_day_xp INTEGER NOT NULL DEFAULT 0');
+      await db.execute(
+          'ALTER TABLE stats ADD COLUMN best_day_level INTEGER NOT NULL DEFAULT 1');
+      await db.execute(
+          'ALTER TABLE stats ADD COLUMN best_day_points INTEGER NOT NULL DEFAULT 0');
+      await db.execute('ALTER TABLE stats ADD COLUMN best_day_date INTEGER');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS goals (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          type TEXT NOT NULL,
+          target_activity_id TEXT,
+          target_value INTEGER NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at INTEGER NOT NULL
+        )
+      ''');
+    }
   }
 
   /// Wipes all user data but keeps schema (used by Settings > Reset Statistics).
@@ -178,6 +235,12 @@ class DBHelper {
         'total_check_ins': 0,
         'total_xp': 0,
         'level': 1,
+        'today_xp': 0,
+        'today_level': 1,
+        'best_day_xp': 0,
+        'best_day_level': 1,
+        'best_day_points': 0,
+        'best_day_date': null,
         'current_streak_days': 0,
         'longest_streak_days': 0,
         'last_check_in_at': null,

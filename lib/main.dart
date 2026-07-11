@@ -44,7 +44,12 @@ void _handleNotificationTap(NotificationResponse response) {
       // user happened to tap "Skip" specifically.
       _rescheduleFromPersistedInterval();
       navigatorKey.currentState?.push(
-        MaterialPageRoute(builder: (_) => const CheckInScreen()),
+        MaterialPageRoute(
+          builder: (_) => Scaffold(
+            appBar: AppBar(title: const Text('What are you doing right now?')),
+            body: const CheckInScreen(),
+          ),
+        ),
       );
   }
 }

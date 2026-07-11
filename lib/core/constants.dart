@@ -20,7 +20,7 @@ class AppConstants {
   // cumulativeXpForLevel(n) = 50 * n * (n - 1)  -> smooth quadratic progression
   static int cumulativeXpForLevel(int level) {
     if (level <= 1) return 0;
-    return 50 * level * (level - 1);
+    return 500 * level * (level - 1);
   }
 
   // Attribute keys
@@ -40,6 +40,10 @@ class AppConstants {
   static const String prefNotifSound = 'pref_notif_sound';
   static const String prefNotifVibration = 'pref_notif_vibration';
   static const String prefLastCheckIn = 'pref_last_checkin_epoch';
+  static const String prefDefaultAttributeMax = 'pref_default_attribute_max';
+
+  // Character states
+  static const int defaultAttributeMaxValue = 100;
 }
 
 enum ActivityType { good, bad, neutral }

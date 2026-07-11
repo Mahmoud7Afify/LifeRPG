@@ -1,5 +1,10 @@
 /// Aggregate, denormalized stats kept for fast dashboard reads.
 /// Recomputed/updated incrementally by ScoringService & XpService.
+///
+/// XP/level is tracked on two horizons:
+///   - `totalXp` / `level`         : lifetime cumulative (used by "overall run" achievements)
+///   - `todayXp` / `todayLevel`    : resets every day (the number shown front-and-center)
+///   - `bestDayXp/Level/Points`    : the best single day ever recorded, updated when a day rolls over
 class UserStats {
   final int todayPoints;
   final int overallPoints;
@@ -10,6 +15,12 @@ class UserStats {
   final int totalCheckIns;
   final int totalXp;
   final int level;
+  final int todayXp;
+  final int todayLevel;
+  final int bestDayXp;
+  final int bestDayLevel;
+  final int bestDayPoints;
+  final DateTime? bestDayDate;
   final int currentStreakDays; // daily check-in streak
   final int longestStreakDays;
   final DateTime? lastCheckInAt;
@@ -25,6 +36,12 @@ class UserStats {
     this.totalCheckIns = 0,
     this.totalXp = 0,
     this.level = 1,
+    this.todayXp = 0,
+    this.todayLevel = 1,
+    this.bestDayXp = 0,
+    this.bestDayLevel = 1,
+    this.bestDayPoints = 0,
+    this.bestDayDate,
     this.currentStreakDays = 0,
     this.longestStreakDays = 0,
     this.lastCheckInAt,
@@ -41,6 +58,12 @@ class UserStats {
     int? totalCheckIns,
     int? totalXp,
     int? level,
+    int? todayXp,
+    int? todayLevel,
+    int? bestDayXp,
+    int? bestDayLevel,
+    int? bestDayPoints,
+    DateTime? bestDayDate,
     int? currentStreakDays,
     int? longestStreakDays,
     DateTime? lastCheckInAt,
@@ -56,6 +79,12 @@ class UserStats {
       totalCheckIns: totalCheckIns ?? this.totalCheckIns,
       totalXp: totalXp ?? this.totalXp,
       level: level ?? this.level,
+      todayXp: todayXp ?? this.todayXp,
+      todayLevel: todayLevel ?? this.todayLevel,
+      bestDayXp: bestDayXp ?? this.bestDayXp,
+      bestDayLevel: bestDayLevel ?? this.bestDayLevel,
+      bestDayPoints: bestDayPoints ?? this.bestDayPoints,
+      bestDayDate: bestDayDate ?? this.bestDayDate,
       currentStreakDays: currentStreakDays ?? this.currentStreakDays,
       longestStreakDays: longestStreakDays ?? this.longestStreakDays,
       lastCheckInAt: lastCheckInAt ?? this.lastCheckInAt,
@@ -74,6 +103,12 @@ class UserStats {
         'total_check_ins': totalCheckIns,
         'total_xp': totalXp,
         'level': level,
+        'today_xp': todayXp,
+        'today_level': todayLevel,
+        'best_day_xp': bestDayXp,
+        'best_day_level': bestDayLevel,
+        'best_day_points': bestDayPoints,
+        'best_day_date': bestDayDate?.millisecondsSinceEpoch,
         'current_streak_days': currentStreakDays,
         'longest_streak_days': longestStreakDays,
         'last_check_in_at': lastCheckInAt?.millisecondsSinceEpoch,
@@ -91,6 +126,14 @@ class UserStats {
       totalCheckIns: map['total_check_ins'] as int? ?? 0,
       totalXp: map['total_xp'] as int? ?? 0,
       level: map['level'] as int? ?? 1,
+      todayXp: map['today_xp'] as int? ?? 0,
+      todayLevel: map['today_level'] as int? ?? 1,
+      bestDayXp: map['best_day_xp'] as int? ?? 0,
+      bestDayLevel: map['best_day_level'] as int? ?? 1,
+      bestDayPoints: map['best_day_points'] as int? ?? 0,
+      bestDayDate: map['best_day_date'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['best_day_date'] as int)
+          : null,
       currentStreakDays: map['current_streak_days'] as int? ?? 0,
       longestStreakDays: map['longest_streak_days'] as int? ?? 0,
       lastCheckInAt: map['last_check_in_at'] != null

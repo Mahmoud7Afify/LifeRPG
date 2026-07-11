@@ -15,7 +15,7 @@ class ActivityManagementScreen extends ConsumerWidget {
     final activitiesAsync = ref.watch(activitiesProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Activities')),
+      appBar: AppBar(title: const Text('Activities Management')),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openEditor(context, ref, null),
         child: const Icon(Icons.add),
@@ -119,12 +119,15 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
   late ActivityType _type;
   late String _icon;
   late int _color;
-  late List<ActivityAttributeMapping> _mappings;
-  late List<CharacterAttribute> _allAttributes;
+  List<ActivityAttributeMapping> _mappings = [];
+  List<CharacterAttribute> _allAttributes = [];
+  final Map<String, TextEditingController> _mappingControllers = {};
+  bool _loading = true;
 
   static const _palette = [
     0xFF3F51B5, 0xFF00897B, 0xFFE53935, 0xFF43A047, 0xFF6D4C41,
     0xFFFB8C00, 0xFF9E9E9E, 0xFF8E24AA, 0xFF3949AB, 0xFF00ACC1,
+    0xFFD81B60, 0xFF5D4037, 0xFF1E88E5, 0xFF7CB342, 0xFFF4511E,
   ];
 
   @override
@@ -133,30 +136,30 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
     final e = widget.existing;
     _nameController = TextEditingController(text: e?.name ?? '');
     _categoryController = TextEditingController(text: e?.category ?? 'General');
-    _scoreController = TextEditingController(text: '${e?.score ?? 50}');
+    _scoreController = TextEditingController(text: '${e?.score ?? 5}');
     _type = e?.type ?? ActivityType.good;
     _icon = e?.icon ?? 'school';
     _color = e?.color ?? _palette.first;
-    _mappings = [];
-    _allAttributes = [];
     _loadData();
   }
 
   Future<void> _loadData() async {
-    final attrs = await ref.read(attributesProvider.future);
+    final repo = ref.read(activityRepositoryProvider);
+    final attrs = await repo.getAllAttributes();
     _allAttributes = attrs;
 
     if (widget.existing == null) {
-      // Default zero contribution for new activities
-      _mappings = attrs.map((attr) => ActivityAttributeMapping(
-        activityId: '', 
-        attributeId: attr.id,
-        points: 0,
-      )).toList();
+      _mappings = attrs
+          .map((attr) => ActivityAttributeMapping(activityId: '', attributeId: attr.id, points: 0))
+          .toList();
     } else {
-      _mappings = await ref.read(activityRepositoryProvider).getMappingsForActivity(widget.existing!.id);
+      // Filled-in so newly-added attributes still show a row for existing activities.
+      _mappings = await repo.getMappingsFilled(widget.existing!.id);
     }
-    if (mounted) setState(() {});
+    for (final m in _mappings) {
+      _mappingControllers[m.attributeId] = TextEditingController(text: '${m.points}');
+    }
+    if (mounted) setState(() => _loading = false);
   }
 
   @override
@@ -164,6 +167,9 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
     _nameController.dispose();
     _categoryController.dispose();
     _scoreController.dispose();
+    for (final c in _mappingControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -192,44 +198,104 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
               keyboardType: const TextInputType.numberWithOptions(signed: true),
               decoration: const InputDecoration(labelText: 'Base Score'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
+            Text('Effect', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            SegmentedButton<ActivityType>(
+              segments: const [
+                ButtonSegment(value: ActivityType.good, label: Text('Good')),
+                ButtonSegment(value: ActivityType.neutral, label: Text('Neutral')),
+                ButtonSegment(value: ActivityType.bad, label: Text('Bad')),
+              ],
+              selected: {_type},
+              onSelectionChanged: (s) => setState(() => _type = s.first),
+            ),
 
-            Text('Attribute Contributions', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 20),
+            Text('Color', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _palette.map((c) {
+                final selected = c == _color;
+                return InkWell(
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: () => setState(() => _color = c),
+                  child: CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Color(c),
+                    child: selected ? const Icon(Icons.check, color: Colors.white, size: 18) : null,
+                  ),
+                );
+              }).toList(),
+            ),
+
+            const SizedBox(height: 20),
+            Text('Icon', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: IconRegistry.allKeys.map((key) {
+                final selected = key == _icon;
+                return InkWell(
+                  borderRadius: BorderRadius.circular(24),
+                  onTap: () => setState(() => _icon = key),
+                  child: CircleAvatar(
+                    radius: 22,
+                    backgroundColor: selected ? Color(_color) : Theme.of(context).colorScheme.surfaceContainerHighest,
+                    child: Icon(
+                      IconRegistry.resolve(key),
+                      color: selected ? Colors.white : null,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+
+            const SizedBox(height: 20),
+            Text('Character State Effects', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text('How much this activity moves each character state, per check-in.',
+                style: Theme.of(context).textTheme.bodySmall),
             const SizedBox(height: 8),
 
-            if (_allAttributes.isEmpty)
+            if (_loading)
               const Center(child: CircularProgressIndicator())
+            else if (_allAttributes.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('No character states yet — add some from the "Character States" tab.'),
+              )
             else
-              ..._mappings.map((mapping) {
-                final attr = _allAttributes.firstWhere(
-                  (a) => a.id == mapping.attributeId,
-                  orElse: () => CharacterAttribute(id: '', name: 'Unknown'),
-                );
-
+              ..._allAttributes.map((attr) {
+                final controller = _mappingControllers[attr.id]!;
                 return ListTile(
+                  contentPadding: EdgeInsets.zero,
                   title: Text(attr.name),
-                  subtitle: const Text('Points contributed'),
+                  subtitle: const Text('Points contributed per check-in'),
                   trailing: SizedBox(
                     width: 90,
                     child: TextField(
                       keyboardType: const TextInputType.numberWithOptions(signed: true),
                       decoration: const InputDecoration(suffixText: 'pts'),
-                      controller: TextEditingController(text: mapping.points.toString()),
+                      controller: controller,
                       onChanged: (val) {
                         final points = int.tryParse(val) ?? 0;
-                        final index = _mappings.indexWhere((m) => m.attributeId == mapping.attributeId);
+                        final index = _mappings.indexWhere((m) => m.attributeId == attr.id);
                         if (index != -1) {
-                          _mappings[index] = _mappings[index].copyWith(points: points); // Better if you add copyWith
+                          _mappings[index] = _mappings[index].copyWith(points: points);
                         }
                       },
                     ),
                   ),
                 );
-              }).toList(),
+              }),
 
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: _save,
+              onPressed: _loading ? null : _save,
               child: Text(widget.existing == null ? 'Create Activity' : 'Save Changes'),
             ),
           ],
@@ -245,8 +311,6 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
     final score = int.tryParse(_scoreController.text.trim()) ?? 0;
     final notifier = ref.read(activitiesProvider.notifier);
     final repo = ref.read(activityRepositoryProvider);
-
-    String activityId;
 
     final newActivity = widget.existing?.copyWith(
       name: name,
@@ -265,7 +329,7 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
       icon: _icon,
     );
 
-    activityId = newActivity.id;
+    final activityId = newActivity.id;
 
     if (widget.existing == null) {
       await notifier.addActivity(newActivity);
@@ -273,12 +337,13 @@ class _ActivityEditorSheetState extends ConsumerState<_ActivityEditorSheet> {
       await notifier.updateActivity(newActivity);
     }
 
-    // Update mappings with correct activityId
-    final updatedMappings = _mappings.map((m) => ActivityAttributeMapping(
-      activityId: activityId,
-      attributeId: m.attributeId,
-      points: m.points,
-    )).toList();
+    final updatedMappings = _mappings
+        .map((m) => ActivityAttributeMapping(
+              activityId: activityId,
+              attributeId: m.attributeId,
+              points: m.points,
+            ))
+        .toList();
 
     await repo.setMappingsForActivity(activityId, updatedMappings);
 

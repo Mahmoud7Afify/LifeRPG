@@ -1,23 +1,33 @@
+import '../../core/constants.dart';
+
 /// A character attribute, e.g. "Knowledge", "Discipline", "Health".
 class CharacterAttribute {
   final String id;
   final String name;
   final int totalPoints; // accumulated points across all time
   final int todayPoints;
+  final int maxValue; // the "out of" number shown on the progress bar
 
   const CharacterAttribute({
     required this.id,
     required this.name,
     this.totalPoints = 0,
     this.todayPoints = 0,
+    this.maxValue = AppConstants.defaultAttributeMaxValue,
   });
 
-  CharacterAttribute copyWith({int? totalPoints, int? todayPoints}) {
+  CharacterAttribute copyWith({
+    String? name,
+    int? totalPoints,
+    int? todayPoints,
+    int? maxValue,
+  }) {
     return CharacterAttribute(
       id: id,
-      name: name,
+      name: name ?? this.name,
       totalPoints: totalPoints ?? this.totalPoints,
       todayPoints: todayPoints ?? this.todayPoints,
+      maxValue: maxValue ?? this.maxValue,
     );
   }
 
@@ -26,6 +36,7 @@ class CharacterAttribute {
         'name': name,
         'total_points': totalPoints,
         'today_points': todayPoints,
+        'max_value': maxValue,
       };
 
   factory CharacterAttribute.fromMap(Map<String, Object?> map) {
@@ -34,6 +45,7 @@ class CharacterAttribute {
       name: map['name'] as String,
       totalPoints: map['total_points'] as int? ?? 0,
       todayPoints: map['today_points'] as int? ?? 0,
+      maxValue: map['max_value'] as int? ?? AppConstants.defaultAttributeMaxValue,
     );
   }
 }

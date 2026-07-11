@@ -15,49 +15,46 @@ class CheckInScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final activitiesAsync = ref.watch(activitiesProvider);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('What are you doing right now?')),
-      body: activitiesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => Center(child: Text('Error: $e')),
-        data: (activities) {
-          final enabled = activities.where((a) => a.enabled && !a.archived).toList();
-          if (enabled.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'No activities yet. Add some from the Activities tab, '
-                  'or tap "Other" below.',
-                  textAlign: TextAlign.center,
-                ),
+    return activitiesAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, st) => Center(child: Text('Error: $e')),
+      data: (activities) {
+        final enabled = activities.where((a) => a.enabled && !a.archived).toList();
+        if (enabled.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'No activities yet. Add some from Activities Management, '
+                'or tap "Other" below.',
+                textAlign: TextAlign.center,
               ),
-            );
-          }
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 14,
-                crossAxisSpacing: 14,
-                childAspectRatio: 1.05,
-              ),
-              itemCount: enabled.length + 1, // +1 for "Other"
-              itemBuilder: (context, index) {
-                if (index == enabled.length) {
-                  return _OtherCard(onTap: () => _openOtherSheet(context, ref));
-                }
-                final activity = enabled[index];
-                return ActivityCard(
-                  activity: activity,
-                  onTap: () => _submitCheckIn(context, ref, activity.id),
-                );
-              },
             ),
           );
-        },
-      ),
+        }
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: GridView.builder(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 14,
+              crossAxisSpacing: 14,
+              childAspectRatio: 1.05,
+            ),
+            itemCount: enabled.length + 1, // +1 for "Other"
+            itemBuilder: (context, index) {
+              if (index == enabled.length) {
+                return _OtherCard(onTap: () => _openOtherSheet(context, ref));
+              }
+              final activity = enabled[index];
+              return ActivityCard(
+                activity: activity,
+                onTap: () => _submitCheckIn(context, ref, activity.id),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 

@@ -17,6 +17,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final intervalAsync = ref.watch(checkInIntervalProvider);
     final darkModeAsync = ref.watch(darkModeProvider);
+    final defaultMaxAsync = ref.watch(defaultAttributeMaxProvider);
     final settingsRepo = ref.read(settingsRepositoryProvider);
 
     return Scaffold(
@@ -87,6 +88,27 @@ class SettingsScreen extends ConsumerWidget {
               title: const Text('Dark mode'),
               value: dark,
               onChanged: (_) => ref.read(darkModeProvider.notifier).toggle(),
+            ),
+          ),
+          const Divider(),
+          const _SectionHeader('Character States'),
+          defaultMaxAsync.when(
+            loading: () => const ListTile(title: Text('Loading...')),
+            error: (e, st) => ListTile(title: Text('Error: $e')),
+            data: (maxValue) => ListTile(
+              title: const Text('Default max value'),
+              subtitle: const Text('Used as the starting target for new character states'),
+              trailing: DropdownButton<int>(
+                value: maxValue,
+                items: const [10, 25, 50, 100, 200, 500, 1000]
+                    .map((m) => DropdownMenuItem(value: m, child: Text('$m')))
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) {
+                    ref.read(defaultAttributeMaxProvider.notifier).setValue(v);
+                  }
+                },
+              ),
             ),
           ),
           const Divider(),

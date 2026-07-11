@@ -56,7 +56,7 @@ class ActivityRepository {
     });
   }
 
-  // --- Attribute mappings ---
+  // --- Character attributes ---
 
   Future<List<CharacterAttribute>> getAllAttributes() async {
     final db = await _db;
@@ -70,12 +70,71 @@ class ActivityRepository {
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  /// Adds a brand-new attribute and back-fills a zero-point mapping row for
+  /// every existing activity, so the "attribute contributions" UI always has
+  /// a row to edit for it.
+  Future<void> addAttribute(CharacterAttribute attr) async {
+    final db = await _db;
+    await db.transaction((txn) async {
+      await txn.insert('attributes', attr.toMap());
+      final activities = await txn.query('activities');
+      for (final a in activities) {
+        await txn.insert(
+          'activity_attribute_mappings',
+          {
+            'activity_id': a['id'],
+            'attribute_id': attr.id,
+            'points': 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+    });
+  }
+
+  Future<void> updateAttribute(CharacterAttribute attr) async {
+    final db = await _db;
+    await db.update(
+      'attributes',
+      {'name': attr.name, 'max_value': attr.maxValue},
+      where: 'id = ?',
+      whereArgs: [attr.id],
+    );
+  }
+
+  Future<void> deleteAttribute(String id) async {
+    final db = await _db;
+    await db.transaction((txn) async {
+      await txn.delete('activity_attribute_mappings',
+          where: 'attribute_id = ?', whereArgs: [id]);
+      await txn.delete('attributes', where: 'id = ?', whereArgs: [id]);
+    });
+  }
+
+  // --- Activity <-> attribute mappings ---
+
   Future<List<ActivityAttributeMapping>> getMappingsForActivity(
       String activityId) async {
     final db = await _db;
     final rows = await db.query('activity_attribute_mappings',
         where: 'activity_id = ?', whereArgs: [activityId]);
     return rows.map(ActivityAttributeMapping.fromMap).toList();
+  }
+
+  /// Returns the mappings for [activityId], filled in with a zero-point
+  /// entry for any attribute that doesn't have one yet (e.g. attributes
+  /// created after this activity already existed).
+  Future<List<ActivityAttributeMapping>> getMappingsFilled(
+      String activityId) async {
+    final existing = await getMappingsForActivity(activityId);
+    final attrs = await getAllAttributes();
+    final byAttr = {for (final m in existing) m.attributeId: m};
+    return attrs
+        .map((a) =>
+            byAttr[a.id] ??
+            ActivityAttributeMapping(
+                activityId: activityId, attributeId: a.id, points: 0))
+        .toList();
   }
 
   Future<void> setMappingsForActivity(

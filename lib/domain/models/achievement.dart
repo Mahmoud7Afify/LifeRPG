@@ -1,10 +1,31 @@
 enum AchievementTriggerType {
+  // --- Overall (lifetime) achievements ---
   totalXp,
   totalCheckIns,
   activityCount, // count of check-ins for a specific activity name/category
   dailyStreak,
   productivePoints,
   abstinenceStreak, // e.g. "No Social Media for N days"
+
+  // --- Daily-record achievements: unlock once ANY single day ever hits target ---
+  bestDayXp,
+  bestDayLevel,
+  bestDayPoints,
+}
+
+extension AchievementTriggerTypeX on AchievementTriggerType {
+  /// Daily-record trigger types are evaluated against the best-ever single
+  /// day's XP/level/points rather than lifetime totals.
+  bool get isDaily {
+    switch (this) {
+      case AchievementTriggerType.bestDayXp:
+      case AchievementTriggerType.bestDayLevel:
+      case AchievementTriggerType.bestDayPoints:
+        return true;
+      default:
+        return false;
+    }
+  }
 }
 
 /// A single achievement definition + its unlocked state.

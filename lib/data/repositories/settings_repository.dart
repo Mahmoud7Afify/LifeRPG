@@ -53,4 +53,15 @@ class SettingsRepository {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(AppConstants.prefLastCheckIn);
   }
+
+  Future<int> getDefaultAttributeMax() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(AppConstants.prefDefaultAttributeMax) ??
+        AppConstants.defaultAttributeMaxValue;
+  }
+
+  Future<void> setDefaultAttributeMax(int value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(AppConstants.prefDefaultAttributeMax, value);
+  }
 }

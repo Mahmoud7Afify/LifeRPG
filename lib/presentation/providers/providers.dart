@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 import '../../data/repositories/activity_repository.dart';
+import '../../data/repositories/goal_repository.dart';
 import '../../data/repositories/log_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/stats_repository.dart';
@@ -7,8 +9,10 @@ import '../../domain/models/achievement.dart';
 import '../../domain/models/activity.dart';
 import '../../domain/models/activity_log.dart';
 import '../../domain/models/attribute.dart';
+import '../../domain/models/goal.dart';
 import '../../domain/models/user_stats.dart';
 import '../../services/achievement_service.dart';
+import '../../services/goal_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/scoring_service.dart';
 import '../../services/xp_service.dart';
@@ -19,10 +23,12 @@ final activityRepositoryProvider = Provider((ref) => ActivityRepository());
 final logRepositoryProvider = Provider((ref) => LogRepository());
 final statsRepositoryProvider = Provider((ref) => StatsRepository());
 final settingsRepositoryProvider = Provider((ref) => SettingsRepository());
+final goalRepositoryProvider = Provider((ref) => GoalRepository());
 
 final xpServiceProvider = Provider((ref) => XpService());
 final scoringServiceProvider = Provider((ref) => ScoringService());
 final achievementServiceProvider = Provider((ref) => AchievementService());
+final goalServiceProvider = Provider((ref) => GoalService());
 
 // --- Activities ---
 
@@ -67,7 +73,7 @@ class ActivitiesNotifier extends AsyncNotifier<List<Activity>> {
   }
 }
 
-// --- Attributes ---
+// --- Character attributes ("Character States") ---
 
 final attributesProvider =
     AsyncNotifierProvider<AttributesNotifier, List<CharacterAttribute>>(
@@ -81,6 +87,28 @@ class AttributesNotifier extends AsyncNotifier<List<CharacterAttribute>> {
 
   Future<void> refresh() async {
     state = AsyncData(await ref.read(activityRepositoryProvider).getAllAttributes());
+  }
+
+  Future<void> addAttribute(String name, {int? maxValue}) async {
+    final repo = ref.read(activityRepositoryProvider);
+    final defaultMax = maxValue ??
+        await ref.read(settingsRepositoryProvider).getDefaultAttributeMax();
+    await repo.addAttribute(CharacterAttribute(
+      id: const Uuid().v4(),
+      name: name,
+      maxValue: defaultMax,
+    ));
+    await refresh();
+  }
+
+  Future<void> updateAttribute(CharacterAttribute attribute) async {
+    await ref.read(activityRepositoryProvider).updateAttribute(attribute);
+    await refresh();
+  }
+
+  Future<void> deleteAttribute(String id) async {
+    await ref.read(activityRepositoryProvider).deleteAttribute(id);
+    await refresh();
   }
 }
 
@@ -109,6 +137,52 @@ final recentLogsProvider = FutureProvider.autoDispose<List<ActivityLog>>((ref) a
 
 final achievementsProvider = FutureProvider.autoDispose<List<Achievement>>((ref) async {
   return ref.read(statsRepositoryProvider).getAllAchievements();
+});
+
+// --- Goals ---
+
+final goalsProvider =
+    AsyncNotifierProvider<GoalsNotifier, List<Goal>>(GoalsNotifier.new);
+
+class GoalsNotifier extends AsyncNotifier<List<Goal>> {
+  @override
+  Future<List<Goal>> build() async {
+    return ref.read(goalRepositoryProvider).getAll();
+  }
+
+  Future<void> refresh() async {
+    state = AsyncData(await ref.read(goalRepositoryProvider).getAll());
+  }
+
+  Future<void> addGoal(Goal goal) async {
+    await ref.read(goalRepositoryProvider).insert(goal);
+    await refresh();
+    ref.invalidate(goalProgressProvider);
+  }
+
+  Future<void> updateGoal(Goal goal) async {
+    await ref.read(goalRepositoryProvider).update(goal);
+    await refresh();
+    ref.invalidate(goalProgressProvider);
+  }
+
+  Future<void> deleteGoal(String id) async {
+    await ref.read(goalRepositoryProvider).delete(id);
+    await refresh();
+    ref.invalidate(goalProgressProvider);
+  }
+
+  Future<void> setEnabled(String id, bool enabled) async {
+    await ref.read(goalRepositoryProvider).setEnabled(id, enabled);
+    await refresh();
+    ref.invalidate(goalProgressProvider);
+  }
+}
+
+/// Today's live progress for every enabled goal.
+final goalProgressProvider = FutureProvider.autoDispose<List<GoalProgress>>((ref) async {
+  ref.watch(goalsProvider);
+  return ref.read(goalServiceProvider).getTodayProgress();
 });
 
 // --- Settings ---
@@ -142,8 +216,24 @@ class DarkModeNotifier extends AsyncNotifier<bool> {
   }
 }
 
+/// The default "out of" max value applied to newly created character states.
+final defaultAttributeMaxProvider =
+    AsyncNotifierProvider<DefaultAttributeMaxNotifier, int>(
+        DefaultAttributeMaxNotifier.new);
+
+class DefaultAttributeMaxNotifier extends AsyncNotifier<int> {
+  @override
+  Future<int> build() =>
+      ref.read(settingsRepositoryProvider).getDefaultAttributeMax();
+
+  Future<void> setValue(int value) async {
+    await ref.read(settingsRepositoryProvider).setDefaultAttributeMax(value);
+    state = AsyncData(value);
+  }
+}
+
 /// Convenience notifier that performs a full check-in and refreshes all
-/// dependent providers (stats, attributes, achievements) in one call.
+/// dependent providers (stats, attributes, achievements, goals) in one call.
 final checkInActionProvider = Provider((ref) => CheckInAction(ref));
 
 class CheckInAction {
@@ -179,6 +269,7 @@ class CheckInAction {
     await _ref.read(attributesProvider.notifier).refresh();
     _ref.invalidate(recentLogsProvider);
     _ref.invalidate(achievementsProvider);
+    _ref.invalidate(goalProgressProvider);
     return unlocked;
   }
 }

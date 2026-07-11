@@ -64,6 +64,22 @@ class AchievementService {
             (l.customName ?? '').toLowerCase() ==
             a.targetActivityName!.toLowerCase());
         return !hasActivity;
+
+      // --- Daily-record achievements: compare against the best day ever,
+      // including today-in-progress so they can unlock the moment it happens. ---
+      case AchievementTriggerType.bestDayXp:
+        final best = stats.todayXp > stats.bestDayXp ? stats.todayXp : stats.bestDayXp;
+        return best >= a.targetValue;
+
+      case AchievementTriggerType.bestDayLevel:
+        final best =
+            stats.todayLevel > stats.bestDayLevel ? stats.todayLevel : stats.bestDayLevel;
+        return best >= a.targetValue;
+
+      case AchievementTriggerType.bestDayPoints:
+        final best =
+            stats.todayPoints > stats.bestDayPoints ? stats.todayPoints : stats.bestDayPoints;
+        return best >= a.targetValue;
     }
   }
 }
